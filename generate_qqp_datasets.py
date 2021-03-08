@@ -1,7 +1,9 @@
+import os
 import csv
 import json
 import copy
 import random
+import argparse
 from itertools import combinations, product
 
 import networkx as nx
@@ -11,7 +13,8 @@ train_file = 'data/train.tsv'
 dev_file = 'data/dev.tsv'
 
 class InputExample(object):
-	def __init__(self, text_a, text_b, label):
+	def __init__(self, _id, text_a, text_b, label):
+		self.id = _id
 		self.text_a = text_a
 		self.text_b = text_b
 		self.label = label
@@ -38,22 +41,26 @@ def read_examples(filename):
 			if i == 0:
 				continue
 
-			q1 = row[0]
-			q2 = row[1]
-			label = row[2]
+			_id = row[0]
+			q1 = row[3]
+			q2 = row[4]
+			label = row[5]
 
-			examples.append(InputExample(q1, q2, label))
+			examples.append(InputExample(_id, q1, q2, label))
 			
 	return examples
 
 
-def save_data(pairs, filename):
+def save_data(output_dir, filename, pairs):
 	fieldnames = ['quesiton1', 'question2', 'is_duplicate']
+	filename = os.path.join(output_dir, filename)
 
-	with open('data/%s' % filename, 'w') as f:
+	with open(filename, 'w') as f:
 		csvwriter = csv.writer(f, delimiter='\t')
 		csvwriter.writerow(fieldnames)
 		csvwriter.writerows([[q1, q2, label] for q1, q2, label in pairs])
+
+	print('File saved to {}'.format(filename))
 
 
 def find_mislabeled_pairs(graph):
@@ -88,7 +95,7 @@ def find_mislabeled_pairs(graph):
 	return mislabeled_edges
 
 
-def generate_original_flippend(examples):
+def generate_original_flipped(examples):
 	g = nx.Graph() #find paraphrase cluster
 
 	for e in examples:
@@ -230,23 +237,42 @@ def generate_augmented_flipped(examples):
 	return paraphrase_pairs + non_paraphrase_pairs
 
 
-train_examples = read_examples(train_file)
-dev_examples = read_examples(dev_file)
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser()
 
-print('Generating original flipped...')
-orig_flipped_pairs = generate_original_flippend(train_examples)
-save_data(orig_flipped_pairs, 'train_orig_flipped.tsv')
-orig_flipped_pairs = generate_original_flippend(dev_examples)
-save_data(orig_flipped_pairs, 'dev_orig_flipped.tsv')
+	parser.add_argument("--output_dir",
+                        "-o",
+                        type=os.path.abspath,
+                        default='./data',
+                        help="Output directory")
+	parser.add_argument("--generate_data",
+                        "-d",
+                        nargs='+', default=[],
+                        required=True,
+                        help="Options: [original_flipped | augmented | augmented_flipped]")
 
-print('Generating augmented...')
-augmented_pairs = generate_augmented(train_examples)
-save_data(augmented_pairs, 'train_augmented.tsv')
-augmented_pairs = generate_augmented(dev_examples)
-save_data(augmented_pairs, 'dev_augmented.tsv')
+	args = parser.parse_args()
 
-print('Generating augmented flipped...')
-augmented_flipped_pairs = generate_augmented_flipped(train_examples)
-save_data(augmented_flipped_pairs, 'train_augmented_flipped.tsv')
-augmented_flipped_pairs = generate_augmented_flipped(dev_examples)
-save_data(augmented_flipped_pairs, 'dev_augmented_flipped.tsv')
+	train_examples = read_examples(train_file)
+	dev_examples = read_examples(dev_file)
+
+	if not os.path.exists(args.output_dir):
+		os.makedirs(args.output_dir)
+
+	if 'original_flipped' in args.generate_data:
+		orig_flipped_pairs = generate_original_flipped(train_examples)
+		save_data(args.output_dir, 'train_orig_flipped.tsv', orig_flipped_pairs)
+		orig_flipped_pairs = generate_original_flipped(dev_examples)
+		save_data(args.output_dir, 'dev_orig_flipped.tsv', orig_flipped_pairs)
+
+	if 'augmented' in args.generate_data:
+		augmented_pairs = generate_augmented(train_examples)
+		save_data(args.output_dir, 'train_augmented.tsv', augmented_pairs)
+		augmented_pairs = generate_augmented(dev_examples)
+		save_data(args.output_dir, 'dev_augmented.tsv', augmented_pairs)
+
+	if 'augmented_flipped':
+		augmented_flipped_pairs = generate_augmented_flipped(train_examples)
+		save_data(args.output_dir, 'train_augmented_flipped.tsv', augmented_flipped_pairs)
+		augmented_flipped_pairs = generate_augmented_flipped(dev_examples)
+		save_data(args.output_dir, 'dev_augmented_flipped.tsv', augmented_flipped_pairs)
